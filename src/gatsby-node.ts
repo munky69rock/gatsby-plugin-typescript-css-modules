@@ -1,54 +1,48 @@
-const ExtractTextPlugin = require("extract-text-webpack-plugin");
-const { defaults } = require("./defaults");
+import { WatchIgnorePlugin } from "webpack";
+import defaults from "./defaults";
 
-const postCssLoader = "postcss-loader";
 const cssLoader = "typings-for-css-modules-loader";
 
-exports.modifyWebpackConfig = ({ config, stage }, options) => {
-  config.removeLoader("cssModules");
-
-  const cssFiles = /\.module\.css$/;
-  const configuration = JSON.stringify({
+exports.onCreateWebpackConfig = (
+  { stage, actions, getConfig },
+  pluginOptions,
+) => {
+  const config = getConfig();
+  const options = {
     ...defaults,
-    ...options,
-  });
-  const loader = `${cssLoader}?${configuration}`;
+    ...pluginOptions,
+  };
 
-  switch (stage) {
-    case "develop": {
-      config.loader("cssModules", {
-        test: cssFiles,
-        loaders: ["style-loader", loader, postCssLoader],
-      });
+  const useCssLoader = u => /\/css-loader\//.test(u.loader);
+  const isCssLoaderRule = rule =>
+    rule.oneOf && rule.oneOf.some(r => r.use.some(useCssLoader));
 
-      return config;
-    }
-    case "build-css": {
-      config.loader("cssModules", {
-        test: cssFiles,
-        loader: ExtractTextPlugin.extract("style-loader", [
-          loader,
-          postCssLoader,
-        ]),
-      });
-
-      return config;
-    }
-    case "develop-html":
-    case "build-html":
-    case "build-javascript": {
-      config.loader("cssModules", {
-        test: cssFiles,
-        loader: ExtractTextPlugin.extract("style-loader", [
-          loader,
-          postCssLoader,
-        ]),
-      });
-
-      return config;
-    }
-    default: {
-      return config;
-    }
+  if (!["develop", "develop-html", "build-javascript"].includes(stage)) {
+    return;
   }
+
+  config.module.rules = config.module.rules.map(rule => {
+    if (!isCssLoaderRule(rule)) {
+      return rule;
+    }
+    rule.oneOf = rule.oneOf.map(r => {
+      r.use = r.use.map(u => {
+        if (useCssLoader(u)) {
+          u.loader = cssLoader;
+          u.options = {
+            ...u.options,
+            ...options,
+          };
+        }
+        return u;
+      });
+      return r;
+    });
+    return rule;
+  });
+
+  actions.replaceWebpackConfig(config);
+  actions.setWebpackConfig({
+    plugins: [new WatchIgnorePlugin([/css\.d\.ts$/])],
+  });
 };

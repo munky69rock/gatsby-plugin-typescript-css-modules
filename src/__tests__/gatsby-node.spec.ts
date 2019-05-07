@@ -1,105 +1,105 @@
-describe("gatsby-plugin-sass", () => {
-  jest.mock("extract-text-webpack-plugin", () => {
-    return {
-      extract(...args) {
-        return { extractTextCalledWithArgs: args };
-      },
-    };
+import { WatchIgnorePlugin } from "webpack";
+
+describe("gatsby-plugin-typescript-css-modules", () => {
+  const { onCreateWebpackConfig } = require("../gatsby-node");
+  const defaults = require("../defaults").default;
+
+  const targetStages = ["develop", "develop-html", "build-javascript"];
+  const loader = "typings-for-css-modules-loader";
+
+  const getConfig = () => ({
+    module: {
+      rules: [
+        {
+          oneOf: [
+            {
+              test: /\.module\.css$/,
+              use: [
+                {
+                  loader: "/css-loader/",
+                  options: {},
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
   });
 
-  const { modifyWebpackConfig } = require("../gatsby-node");
-  const { defaults } = require("../defaults");
+  describe("without option", () => {
+    targetStages.forEach(stage => {
+      describe(`stage: ${stage}`, () => {
+        const actions = {
+          replaceWebpackConfig(newConfig) {
+            expect(newConfig.module.rules[0].oneOf[0].use[0]).toEqual({
+              loader,
+              options: {
+                ...defaults,
+              },
+            });
+          },
+          setWebpackConfig(newConfig) {
+            const [plugin] = newConfig.plugins;
+            const [ignorePath] = plugin.paths;
 
-  const styleLoader = expect.stringMatching(/^style-loader/);
-  const postcssLoader = expect.stringMatching(/^postcss-loader/);
-  [
-    {
-      stages: ["develop"],
-      loaderKeys: ["cssModules"],
-      loaderConfig(cssLoader) {
-        return {
-          loaders: expect.arrayContaining([
-            styleLoader,
-            cssLoader,
-            postcssLoader,
-          ]),
-        };
-      },
-    },
-    {
-      stages: ["build-css"],
-      loaderKeys: ["cssModules"],
-      loaderConfig(cssLoader) {
-        return {
-          loader: {
-            extractTextCalledWithArgs: expect.arrayContaining([
-              expect.arrayContaining([cssLoader, postcssLoader]),
-            ]),
+            expect(plugin).toBeInstanceOf(WatchIgnorePlugin);
+            expect(ignorePath).toEqual(/css\.d\.ts$/);
           },
         };
-      },
-    },
-    {
-      stages: ["develop-html", "build-html", "build-javascript"],
-      loaderKeys: ["cssModules"],
-      loaderConfig(cssLoader) {
-        return {
-          loader: {
-            extractTextCalledWithArgs: expect.arrayContaining([
-              expect.arrayContaining([cssLoader, postcssLoader]),
-            ]),
-          },
-        };
-      },
-    },
-  ].forEach(({ stages, loaderKeys, loaderConfig }) => {
-    stages.forEach(stage => {
-      describe("stage: ${stage}", () => {
-        [
-          {
-            options: {},
-            cssLoader: `typings-for-css-modules-loader?${JSON.stringify(defaults)}`,
-          },
-          {
-            options: {
-              namedExport: false,
-              modules: false,
-            },
-            cssLoader: `typings-for-css-modules-loader?${JSON.stringify({
-              ...defaults, ...{
-                namedExport: false,
-                modules: false,
-              }
-            })}`,
-          },
-          {
-            options: {
-              localIdentName: "[name]---[local]----[hash:base64:5]",
-            },
-            cssLoader: `typings-for-css-modules-loader?${JSON.stringify({
-              ...defaults, ...{
-                localIdentName: "[name]---[local]----[hash:base64:5]",
-              }
-            })}`,
-          },
-        ].forEach(({ options, cssLoader }) => {
-          const stringified = JSON.stringify(options);
 
-          it(`modifies webpack config for ${stringified}`, () => {
-            const config = { loader: jest.fn(), removeLoader: jest.fn() };
-            const modified = modifyWebpackConfig({ config, stage }, options);
-
-            expect(modified).toBe(config);
-
-            loaderKeys.forEach(loaderKey =>
-              expect(config.loader).toBeCalledWith(
-                loaderKey,
-                expect.objectContaining(loaderConfig(cssLoader)),
-              ),
-            );
-          });
+        test("config should be replaced", () => {
+          onCreateWebpackConfig({ stage, getConfig, actions }, {});
         });
       });
+    });
+  });
+
+  describe("with option", () => {
+    const options = {
+      silent: true,
+    };
+    targetStages.forEach(stage => {
+      describe(`stage: ${stage}`, () => {
+        const actions = {
+          replaceWebpackConfig(newConfig) {
+            expect(newConfig.module.rules[0].oneOf[0].use[0]).toEqual({
+              loader,
+              options: {
+                ...defaults,
+                ...options,
+              },
+            });
+          },
+          setWebpackConfig(newConfig) {
+            const [plugin] = newConfig.plugins;
+            const [ignorePath] = plugin.paths;
+
+            expect(plugin).toBeInstanceOf(WatchIgnorePlugin);
+            expect(ignorePath).toEqual(/css\.d\.ts$/);
+          },
+        };
+
+        test("config should be replaced", () => {
+          onCreateWebpackConfig({ stage, getConfig, actions }, options);
+        });
+      });
+    });
+  });
+
+  describe("do not modified", () => {
+    const stage = "build-html";
+    const actions = {
+      replaceWebpackConfig(newConfig) {
+        throw new Error("Do not called");
+      },
+      setWebpackConfig(newConfig) {
+        throw new Error("Do not called");
+      },
+    };
+
+    test("config should not be replaced", () => {
+      onCreateWebpackConfig({ stage, getConfig, actions }, {});
     });
   });
 });
